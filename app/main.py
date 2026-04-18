@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from app.db import Base, engine
 from app.routes import auth
+from app.coree.security import create_access_token
 app = FastAPI()
 
-
+print(create_access_token({"user_id": 1}))
 
 @app.get("/")
 def root():

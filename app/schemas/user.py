@@ -16,3 +16,22 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+class UserLogin(BaseModel):
+    email: str
+    password: str        
+
+class RegisterRequest(BaseModel):
+    company_name: str
+    name: str
+    email: str
+    password: str    
+
+class CompanyAdminRegister(BaseModel):
+    company_name: str
+    name: str
+    email: str
+    password: str    
+class CompanyAdminLogin(BaseModel):
+    email: str
+    password: str    
