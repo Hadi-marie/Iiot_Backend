@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.user import User
 from app.models.company_admin import CompanyAdmin
-
+from app.models.subscription import Subscription
 security = HTTPBearer()
 SECRET_KEY = "supersecretkey"   # لاحقًا نخليها .env
 ALGORITHM = "HS256"
@@ -69,14 +69,15 @@ def get_current_user(
 
 
 
-
 def get_current_admin(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
     token = credentials.credentials
+    print("TOKEN:", token)
 
     payload = decode_access_token(token)
+    print("PAYLOAD:", payload)
 
     admin_id = payload.get("admin_id")
 
@@ -89,3 +90,18 @@ def get_current_admin(
         raise HTTPException(status_code=401, detail="Admin not found")
 
     return admin
+
+def check_subscription(db, company_id):
+
+    subscription = db.query(Subscription).filter(
+        Subscription.company_id == company_id,
+        Subscription.status == "active"
+    ).order_by(Subscription.end_date.desc()).first()
+
+    if not subscription:
+        raise HTTPException(status_code=403, detail="No active subscription")
+
+    if subscription.end_date < datetime.utcnow():
+        raise HTTPException(status_code=403, detail="Subscription expired")
+
+    return subscription
