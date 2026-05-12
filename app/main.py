@@ -8,6 +8,8 @@ from app.db import Base, engine
 from app.routes import auth, payment, devices, network, dashboard, ws_monitor
 from app.routes import ws_dashboard
 from app.utils.heartbeat_checker import start_heartbeat_checker
+from app.routes import alert
+# وتحت الـ routers:
 
 
 @asynccontextmanager
@@ -41,7 +43,7 @@ app.include_router(network.router,      prefix="/networks",  tags=["Network"])
 app.include_router(dashboard.router,    prefix="/dashboard", tags=["Dashboard"])
 app.include_router(ws_monitor.router)    # ws://..../monitor
 app.include_router(ws_dashboard.router)  # ws://..../ws/dashboard
-
+app.include_router(alert.router, prefix="/alerts", tags=["Alerts"])
 
 @app.get("/", tags=["Health"])
 def root():
