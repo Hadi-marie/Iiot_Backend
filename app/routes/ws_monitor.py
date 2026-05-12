@@ -12,8 +12,8 @@ from app.models.device import Device
 from app.models.security_alert import SecurityAlert
 from app.models.audit_log import AuditLog
 
-# 🔥 استيراد broadcast الفرونت
-from app.routes.ws_dashboard import broadcast_alert_to_company
+# ✅ من broadcaster بدل circular import
+from app.utils.broadcaster import broadcast_alert_to_company
 
 router = APIRouter()
 
@@ -78,7 +78,7 @@ async def websocket_monitor(websocket: WebSocket):
             if not all([device_id, device_token, new_status,
                         timestamp, signature, nonce]):
                 await websocket.send_json({
-                    "type": "validation_error",
+                    "type":    "validation_error",
                     "message": "Missing required fields"
                 })
                 continue
@@ -89,14 +89,14 @@ async def websocket_monitor(websocket: WebSocket):
                 timestamp = float(timestamp)
             except (TypeError, ValueError):
                 await websocket.send_json({
-                    "type": "validation_error",
+                    "type":    "validation_error",
                     "message": "Invalid timestamp"
                 })
                 continue
 
             if abs(current_time - timestamp) > 30:
                 await websocket.send_json({
-                    "type": "replay_attack",
+                    "type":    "replay_attack",
                     "message": "Expired packet"
                 })
                 continue
@@ -116,7 +116,7 @@ async def websocket_monitor(websocket: WebSocket):
                 db.commit()
 
                 await websocket.send_json({
-                    "type": "auth_error",
+                    "type":    "auth_error",
                     "message": "Invalid device or token"
                 })
                 continue
@@ -128,7 +128,7 @@ async def websocket_monitor(websocket: WebSocket):
 
             if nonce in used_nonces[device_id]:
                 await websocket.send_json({
-                    "type": "nonce_error",
+                    "type":    "nonce_error",
                     "message": "Replay packet detected"
                 })
                 continue
@@ -145,7 +145,7 @@ async def websocket_monitor(websocket: WebSocket):
 
             if not hmac.compare_digest(signature, expected_signature):
                 await websocket.send_json({
-                    "type": "signature_error",
+                    "type":    "signature_error",
                     "message": "Invalid HMAC signature"
                 })
                 continue
@@ -170,7 +170,7 @@ async def websocket_monitor(websocket: WebSocket):
                 db.commit()
 
                 await websocket.send_json({
-                    "type": "rate_limit",
+                    "type":    "rate_limit",
                     "message": "Too many requests"
                 })
                 await websocket.close()
@@ -189,7 +189,7 @@ async def websocket_monitor(websocket: WebSocket):
 
             if new_status not in allowed_statuses:
                 await websocket.send_json({
-                    "type": "validation_error",
+                    "type":    "validation_error",
                     "message": "Invalid status"
                 })
                 continue
