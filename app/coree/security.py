@@ -1,107 +1,113 @@
-from passlib.context import CryptContext
-from jose import jwt
+import os
+
 from datetime import datetime, timedelta
-from jose import JWTError
-from fastapi import HTTPException, status
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-from fastapi import Depends
+
+from dotenv import load_dotenv
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+
 from app.db import get_db
-from app.models.user import User
 from app.models.company_admin import CompanyAdmin
 from app.models.subscription import Subscription
-security = HTTPBearer()
-SECRET_KEY = "supersecretkey"   # لاحقًا نخليها .env
-ALGORITHM = "HS256"
+from app.models.user import User
+
+load_dotenv()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security    = HTTPBearer()
+
+# ✅ من .env بدل hardcoded
+SECRET_KEY                  = os.getenv("SECRET_KEY", "fallback_dev_only")
+ALGORITHM                   = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 
-def hash_password(password: str):
+# ── Password ──────────────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def verify_password(password: str, hashed_password: str):
-    return pwd_context.verify(password, hashed_password)
+def verify_password(password: str, hashed: str) -> bool:
+    return pwd_context.verify(password, hashed)
 
 
+# ── JWT ───────────────────────────────────────────────────────────────────────
 
-def create_access_token(data: dict):
+def create_access_token(data: dict) -> str:
     to_encode = data.copy()
+    to_encode["exp"] = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    to_encode.update({"exp": expire})
-
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-    return encoded_jwt
-def decode_access_token(token: str):
+def decode_access_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail="Invalid or expired token"
         )
-    
+
+
+# ── Current User / Admin ──────────────────────────────────────────────────────
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
-):
-    token = credentials.credentials
-
-    payload = decode_access_token(token)
-
+) -> User:
+    payload = decode_access_token(credentials.credentials)
     user_id = payload.get("user_id")
 
-    if user_id is None:
+    if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
 
     user = db.query(User).filter(User.user_id == user_id).first()
 
-    if user is None:
+    if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    return user    
-
+    return user
 
 
 def get_current_admin(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
-):
-    token = credentials.credentials
-    print("TOKEN:", token)
-
-    payload = decode_access_token(token)
-    print("PAYLOAD:", payload)
-
+) -> CompanyAdmin:
+    payload  = decode_access_token(credentials.credentials)
     admin_id = payload.get("admin_id")
 
-    if admin_id is None:
+    if not admin_id:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    admin = db.query(CompanyAdmin).filter(CompanyAdmin.admin_id == admin_id).first()
+    admin = db.query(CompanyAdmin).filter(
+        CompanyAdmin.admin_id == admin_id
+    ).first()
 
-    if admin is None:
+    if not admin:
         raise HTTPException(status_code=401, detail="Admin not found")
 
     return admin
 
-def check_subscription(db, company_id):
 
+# ── Subscription check ────────────────────────────────────────────────────────
+
+def check_subscription(db: Session, company_id: int) -> Subscription:
     subscription = db.query(Subscription).filter(
         Subscription.company_id == company_id,
-        Subscription.status == "active"
+        Subscription.status     == "active"
     ).order_by(Subscription.end_date.desc()).first()
 
     if not subscription:
         raise HTTPException(status_code=403, detail="No active subscription")
 
     if subscription.end_date < datetime.utcnow():
+        subscription.status = "expired"
+        db.commit()
         raise HTTPException(status_code=403, detail="Subscription expired")
 
     return subscription

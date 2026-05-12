@@ -9,7 +9,15 @@ from app.routes import devices
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(debug=True)
-
+# 🔥 تشغيل heartbeat checker
+threading.Thread(
+    target=start_heartbeat_checker,
+    daemon=True
+).start()
+threading.Thread(
+    target=start_heartbeat_checker,
+    daemon=True
+).start()
 # routers
 app.include_router(auth.router, prefix="/auth")
 app.include_router(payment.router, prefix="/payment")
