@@ -1,4 +1,4 @@
-import pickle
+import joblib
 import os
 import numpy as np
 from huggingface_hub import hf_hub_download
@@ -9,16 +9,14 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 
 def _load(filename):
     path = hf_hub_download(
-        repo_id    = HF_REPO,
-        filename   = filename,
-        repo_type  = "model",
-        token      = HF_TOKEN
+        repo_id   = HF_REPO,
+        filename  = filename,
+        repo_type = "model",
+        token     = HF_TOKEN
     )
-    with open(path, "rb") as f:
-        return pickle.load(f)
+    return joblib.load(path)
 
 
-# تحميل الموديل عند بدء التشغيل
 model             = _load("lgbm_wavelet_final.pkl")
 scaler            = _load("scaler.pkl")
 selected_feats    = _load("selected_feats.pkl")
@@ -28,9 +26,6 @@ REQUIRED_FEATURES = selected_feats
 
 
 def predict_attack(network_data: dict) -> dict:
-    """
-    يستقبل dict فيه بيانات الشبكة ويرجع نتيجة التحليل.
-    """
     try:
         values = [float(network_data.get(feat, 0)) for feat in REQUIRED_FEATURES]
     except (TypeError, ValueError) as e:
