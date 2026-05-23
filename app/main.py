@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import Base, engine
+from app.models import plan  # ✅ لازم يُستورد عشان SQLAlchemy يعرف الجدول
 from app.routes import auth, payment, devices, network, dashboard
 from app.routes import ws_monitor, ws_dashboard, alert, predict
 from app.utils.heartbeat_checker import start_heartbeat_checker
@@ -41,8 +42,8 @@ app.include_router(network.router,      prefix="/networks",  tags=["Network"])
 app.include_router(dashboard.router,    prefix="/dashboard", tags=["Dashboard"])
 app.include_router(alert.router,        prefix="/alerts",    tags=["Alerts"])
 app.include_router(predict.router,      prefix="/ml",        tags=["ML"])
-app.include_router(ws_monitor.router)    # ws://..../monitor
-app.include_router(ws_dashboard.router)  # ws://..../ws/dashboard
+app.include_router(ws_monitor.router)
+app.include_router(ws_dashboard.router)
 
 
 @app.get("/", tags=["Health"])

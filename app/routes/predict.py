@@ -9,6 +9,7 @@ from app.utils.subscription import check_subscription
 from app.utils.predictor import predict_attack, REQUIRED_FEATURES
 from app.models.device import Device
 from app.models.network import Network
+from app.models.plan import Plan
 from app.models.security_alert import SecurityAlert
 from app.models.audit_log import AuditLog
 from app.utils.broadcaster import broadcast_alert_to_company
@@ -16,10 +17,8 @@ from app.utils.broadcaster import broadcast_alert_to_company
 router = APIRouter()
 
 
-# ── Schema ────────────────────────────────────────────────────────────────────
 class PredictRequest(BaseModel):
-    device_public_id: str   # الجهاز اللي جات منه البيانات
-    # 28 network feature
+    device_public_id: str
     dTtl:      float = 0
     Sport:     float = 0
     SynAck:    float = 0
@@ -50,16 +49,22 @@ class PredictRequest(BaseModel):
     TotPkts:   float = 0
 
 
-# ── Predict endpoint ──────────────────────────────────────────────────────────
 @router.post("/predict")
 async def predict(
     data: PredictRequest,
     current_admin=Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    check_subscription(db, current_admin.company_id)
+    # ── التحقق من الاشتراك وجلب الخطة ───────────────────────────────
+    subscription = check_subscription(db, current_admin.company_id)
 
-    # جلب الجهاز والتحقق إنه تابع للشركة
+    plan = db.query(Plan).filter(
+        Plan.plan_id == subscription.plan_id
+    ).first()
+
+    plan_name = plan.name if plan else "pro"
+
+    # ── التحقق من الجهاز ─────────────────────────────────────────────
     network = db.query(Network).filter(
         Network.company_id == current_admin.company_id
     ).first()
@@ -75,11 +80,11 @@ async def predict(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    # ── تشغيل الموديل ────────────────────────────────────────────────
+    # ── تشغيل الموديل حسب الخطة ──────────────────────────────────────
     network_data = data.model_dump(exclude={"device_public_id"})
 
     try:
-        result = predict_attack(network_data)
+        result = predict_attack(network_data, plan_name=plan_name)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -88,66 +93,78 @@ async def predict(
 
         severity = "critical" if result["action"] == "block" else "high"
 
-        # حظر الجهاز فوراً إذا action = block
         if result["action"] == "block":
             device.status = "blocked"
 
-        # حفظ alert
         new_alert = SecurityAlert(
             company_id = current_admin.company_id,
             device_id  = device.device_id,
             alert_type = "ml_detection",
             severity   = severity,
             message    = (
-                f"ML model detected attack on {device.device_name} "
+                f"[{plan_name.upper()}] ML detected attack on {device.device_name} "
                 f"(probability: {result['probability']})"
             ),
-            source     = "ml_model",
-            status     = "open"
+            source = "ml_model",
+            status = "open"
         )
         db.add(new_alert)
 
-        # audit log
         db.add(AuditLog(
             company_id  = current_admin.company_id,
             event_type  = "ML_ATTACK_DETECTED",
             severity    = severity,
             description = (
-                f"Attack detected on {device.device_name} "
+                f"[{plan_name.upper()}] Attack on {device.device_name} "
                 f"— action: {result['action']}"
             )
         ))
         db.commit()
         db.refresh(new_alert)
 
-        # بث alert للفرونت لحظياً
-        alert_data = {
+        await broadcast_alert_to_company(current_admin.company_id, {
             "type":        "security_alert",
             "severity":    severity,
             "device_id":   device.public_id,
             "device_name": device.device_name,
             "status":      device.status,
+            "plan":        plan_name,
             "message":     new_alert.message,
             "source":      "ml_model",
             "timestamp":   datetime.utcnow().isoformat()
-        }
-        await broadcast_alert_to_company(current_admin.company_id, alert_data)
+        })
 
     return {
-        "device_name": device.device_name,
-        "is_attack":   result["is_attack"],
-        "probability": result["probability"],
-        "action":      result["action"],
+        "device_name":   device.device_name,
+        "plan":          plan_name,
+        "is_attack":     result["is_attack"],
+        "probability":   result["probability"],
+        "threshold":     result["threshold"],
+        "action":        result["action"],
         "device_status": device.status
     }
 
 
-# ── معلومات الموديل ───────────────────────────────────────────────────────────
 @router.get("/model-info")
-def model_info(current_admin=Depends(get_current_admin)):
+def model_info(
+    current_admin=Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    subscription = check_subscription(db, current_admin.company_id)
+
+    plan = db.query(Plan).filter(
+        Plan.plan_id == subscription.plan_id
+    ).first()
+
+    plan_name = plan.name if plan else "pro"
+
+    from app.utils.predictor import PLAN_CONFIG
+    config = PLAN_CONFIG.get(plan_name, PLAN_CONFIG["pro"])
+
     return {
         "model":     "LightGBM + Haar Wavelet",
-        "threshold": 0.494,
+        "plan":      plan_name,
+        "threshold": config["threshold"],
         "features":  REQUIRED_FEATURES,
         "metrics": {
             "f1":        0.9963,
