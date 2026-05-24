@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey
 from app.db import Base
-
+from sqlalchemy.orm import relationship
 import uuid
 
 
@@ -22,3 +22,7 @@ class Network(Base):
     )
 
     ip_range = Column(String(100))
+    devices = relationship(
+    "Device",
+    back_populates="network"
+     )
