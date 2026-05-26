@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import pickle
 import numpy as np
@@ -38,11 +38,11 @@ def _load_resources():
     with open(tokenizer_path, "rb") as f:
         _tokenizer = pickle.load(f)
 
-    print("✅ Sentiment ONNX model loaded")
+    print("Sentiment ONNX model loaded")
 
 
 def _pad_sequences(sequences, maxlen=100):
-    """pad_sequences بدون keras"""
+    import numpy as np
     result = np.zeros((len(sequences), maxlen), dtype=np.float32)
     for i, seq in enumerate(sequences):
         if len(seq) > maxlen:
@@ -52,7 +52,7 @@ def _pad_sequences(sequences, maxlen=100):
     return result
 
 
-def _clean_text(text: str) -> str:
+def _clean_text(text):
     try:
         import nltk
         from nltk.corpus import stopwords
@@ -61,33 +61,30 @@ def _clean_text(text: str) -> str:
         stop_words = set(stopwords.words("english"))
         ps = PorterStemmer()
         text = text.lower()
+        import re
         text = re.sub(r"[^a-z\s]", "", text)
         words = text.split()
         words = [ps.stem(w) for w in words if w not in stop_words]
         return " ".join(words)
     except Exception:
         text = text.lower()
+        import re
         text = re.sub(r"[^a-z\s]", "", text)
         return text
 
 
-def analyze_sentiment(text: str) -> dict:
+def analyze_sentiment(text):
     try:
         _load_resources()
-
         cleaned  = _clean_text(text)
         sequence = _tokenizer.texts_to_sequences([cleaned])
         padded   = _pad_sequences(sequence, maxlen=100)
-
         input_name = _session.get_inputs()[0].name
         score = float(_session.run(None, {input_name: padded})[0][0][0])
-
         sentiment = "positive" if score > 0.5 else "negative"
-
         return {"sentiment": sentiment, "score": round(score, 4)}
-
     except Exception as e:
-        print(f"⚠️ ONNX sentiment error: {e}, fallback")
+        print(f"ONNX error: {e}")
         positive_words = ["good", "great", "excellent", "amazing", "helpful", "perfect"]
         negative_words = ["bad", "terrible", "awful", "poor", "problem", "issue", "slow"]
         text_lower = text.lower()
