@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.company_admin import CompanyAdmin
+from app.models.super_admin import SuperAdmin
 from app.models.subscription import Subscription
 from app.models.user import User
 
@@ -20,7 +21,6 @@ load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security    = HTTPBearer()
 
-# ✅ من .env بدل hardcoded
 SECRET_KEY                  = os.getenv("SECRET_KEY", "fallback_dev_only")
 ALGORITHM                   = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -54,7 +54,7 @@ def decode_access_token(token: str) -> dict:
         )
 
 
-# ── Current User / Admin ──────────────────────────────────────────────────────
+# ── Current User ──────────────────────────────────────────────────────────────
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -74,6 +74,8 @@ def get_current_user(
     return user
 
 
+# ── Current Company Admin ─────────────────────────────────────────────────────
+
 def get_current_admin(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
@@ -92,6 +94,35 @@ def get_current_admin(
         raise HTTPException(status_code=401, detail="Admin not found")
 
     return admin
+
+
+# ── Current Super Admin (المطورين) ────────────────────────────────────────────
+
+def get_current_super_admin(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> SuperAdmin:
+    payload        = decode_access_token(credentials.credentials)
+    super_admin_id = payload.get("super_admin_id")
+
+    if not super_admin_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required"
+        )
+
+    super_admin = db.query(SuperAdmin).filter(
+        SuperAdmin.super_admin_id == super_admin_id,
+        SuperAdmin.is_active      == True
+    ).first()
+
+    if not super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Super admin not found or inactive"
+        )
+
+    return super_admin
 
 
 # ── Subscription check ────────────────────────────────────────────────────────
