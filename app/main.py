@@ -5,10 +5,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import Base, engine
-from app.models import plan, super_admin, feedback as feedback_model
+from app.models import (
+    plan,
+    super_admin,
+    feedback as feedback_model,
+    network_flow,
+    detection_result,
+    action,
+    unblock_request,
+    api_key,
+    report
+)
 from app.routes import auth, payment, devices, network, dashboard
 from app.routes import ws_monitor, ws_dashboard, alert, predict
-from app.routes import super_admin_route, feedback_route
+from app.routes import super_admin_route, feedback_route, unblock_route
 from app.utils.heartbeat_checker import start_heartbeat_checker
 
 
@@ -45,6 +55,7 @@ app.include_router(alert.router,             prefix="/alerts",       tags=["Aler
 app.include_router(predict.router,           prefix="/ml",           tags=["ML"])
 app.include_router(super_admin_route.router, prefix="/super-admin",  tags=["Super Admin"])
 app.include_router(feedback_route.router,    prefix="/feedback",     tags=["Feedback"])
+app.include_router(unblock_route.router,     prefix="/unblock",      tags=["Unblock"])
 app.include_router(ws_monitor.router)
 app.include_router(ws_dashboard.router)
 

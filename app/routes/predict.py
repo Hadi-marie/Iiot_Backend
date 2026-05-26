@@ -10,6 +10,9 @@ from app.utils.predictor import predict_attack, REQUIRED_FEATURES
 from app.models.device import Device
 from app.models.network import Network
 from app.models.plan import Plan
+from app.models.network_flow import NetworkFlow
+from app.models.detection_result import DetectionResult
+from app.models.action import Action
 from app.models.security_alert import SecurityAlert
 from app.models.audit_log import AuditLog
 from app.utils.broadcaster import broadcast_alert_to_company
@@ -55,16 +58,11 @@ async def predict(
     current_admin=Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    # ── التحقق من الاشتراك وجلب الخطة ───────────────────────────────
     subscription = check_subscription(db, current_admin.company_id)
 
-    plan = db.query(Plan).filter(
-        Plan.plan_id == subscription.plan_id
-    ).first()
-
+    plan = db.query(Plan).filter(Plan.plan_id == subscription.plan_id).first()
     plan_name = plan.name if plan else "pro"
 
-    # ── التحقق من الجهاز ─────────────────────────────────────────────
     network = db.query(Network).filter(
         Network.company_id == current_admin.company_id
     ).first()
@@ -80,13 +78,74 @@ async def predict(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    # ── تشغيل الموديل حسب الخطة ──────────────────────────────────────
     network_data = data.model_dump(exclude={"device_public_id"})
 
+    # ── حفظ network_flow ─────────────────────────────────────────────
+    flow = NetworkFlow(
+        device_id   = device.device_id,
+        company_id  = current_admin.company_id,
+        src_port    = data.Sport,
+        dst_port    = data.Dport,
+        protocol    = data.Proto,
+        duration    = data.Dur,
+        src_bytes   = data.SrcBytes,
+        src_pkts    = data.SrcPkts,
+        tot_pkts    = data.TotPkts,
+        load        = data.Load,
+        rate        = data.Rate,
+        src_rate    = data.SrcRate,
+        src_load    = data.SrcLoad,
+        mean        = data.Mean,
+        min_val     = data.Min,
+        max_val     = data.Max,
+        sum_val     = data.Sum,
+        run_time    = data.RunTime,
+        idle_time   = data.IdleTime,
+        s_ttl       = data.sTtl,
+        d_ttl       = data.dTtl,
+        s_int_pkt   = data.SIntPkt,
+        d_int_pkt   = data.DIntPkt,
+        syn_ack     = data.SynAck,
+        tcp_rtt     = data.TcpRtt,
+        p_loss      = data.pLoss,
+        s_app_bytes = data.SAppBytes,
+        src_jitter  = data.SrcJitter,
+        dst_jitter  = data.DstJitter,
+        src_jit_act = data.SrcJitAct,
+    )
+    db.add(flow)
+    db.commit()
+    db.refresh(flow)
+
+    # ── تشغيل الموديل ────────────────────────────────────────────────
     try:
         result = predict_attack(network_data, plan_name=plan_name)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    # ── حفظ detection_result ─────────────────────────────────────────
+    detection = DetectionResult(
+        flow_id          = flow.flow_id,
+        device_id        = device.device_id,
+        company_id       = current_admin.company_id,
+        is_attack        = result["is_attack"],
+        confidence_score = result["probability"],
+        plan_used        = plan_name,
+        action_taken     = result["action"]
+    )
+    db.add(detection)
+    db.commit()
+    db.refresh(detection)
+
+    # ── حفظ action ───────────────────────────────────────────────────
+    db.add(Action(
+        detection_id = detection.detection_id,
+        device_id    = device.device_id,
+        company_id   = current_admin.company_id,
+        action_type  = result["action"],
+        executed_by  = "system"
+    ))
+    db.commit()
 
     # ── إذا هجوم → إجراء فوري ────────────────────────────────────────
     if result["is_attack"]:
@@ -135,13 +194,15 @@ async def predict(
         })
 
     return {
-        "device_name":   device.device_name,
-        "plan":          plan_name,
-        "is_attack":     result["is_attack"],
-        "probability":   result["probability"],
-        "threshold":     result["threshold"],
-        "action":        result["action"],
-        "device_status": device.status
+        "device_name":    device.device_name,
+        "plan":           plan_name,
+        "flow_id":        flow.flow_id,
+        "detection_id":   detection.detection_id,
+        "is_attack":      result["is_attack"],
+        "probability":    result["probability"],
+        "threshold":      result["threshold"],
+        "action":         result["action"],
+        "device_status":  device.status
     }
 
 
@@ -151,11 +212,7 @@ def model_info(
     db: Session = Depends(get_db)
 ):
     subscription = check_subscription(db, current_admin.company_id)
-
-    plan = db.query(Plan).filter(
-        Plan.plan_id == subscription.plan_id
-    ).first()
-
+    plan = db.query(Plan).filter(Plan.plan_id == subscription.plan_id).first()
     plan_name = plan.name if plan else "pro"
 
     from app.utils.predictor import PLAN_CONFIG
@@ -172,3 +229,29 @@ def model_info(
             "precision": 0.9927
         }
     }
+
+
+# ── جلب detection history للشركة ─────────────────────────────────────────────
+@router.get("/detections")
+def get_detections(
+    current_admin=Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    check_subscription(db, current_admin.company_id)
+
+    detections = db.query(DetectionResult).filter(
+        DetectionResult.company_id == current_admin.company_id
+    ).order_by(DetectionResult.detected_at.desc()).limit(100).all()
+
+    return [
+        {
+            "detection_id":    d.detection_id,
+            "device_id":       d.device_id,
+            "is_attack":       d.is_attack,
+            "confidence_score": d.confidence_score,
+            "plan_used":       d.plan_used,
+            "action_taken":    d.action_taken,
+            "detected_at":     d.detected_at.isoformat()
+        }
+        for d in detections
+    ]
