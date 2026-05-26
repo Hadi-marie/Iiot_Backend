@@ -5,10 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import Base, engine
-from app.models import plan, super_admin  # ✅ لازم يُستورد عشان SQLAlchemy ينشئ الجداول
+from app.models import plan, super_admin, feedback as feedback_model
 from app.routes import auth, payment, devices, network, dashboard
 from app.routes import ws_monitor, ws_dashboard, alert, predict
-from app.routes import super_admin_route
+from app.routes import super_admin_route, feedback_route
 from app.utils.heartbeat_checker import start_heartbeat_checker
 
 
@@ -36,14 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router,              prefix="/auth",        tags=["Auth"])
-app.include_router(payment.router,           prefix="/payment",     tags=["Payment"])
-app.include_router(devices.router,           prefix="/devices",     tags=["Devices"])
-app.include_router(network.router,           prefix="/networks",    tags=["Network"])
-app.include_router(dashboard.router,         prefix="/dashboard",   tags=["Dashboard"])
-app.include_router(alert.router,             prefix="/alerts",      tags=["Alerts"])
-app.include_router(predict.router,           prefix="/ml",          tags=["ML"])
-app.include_router(super_admin_route.router, prefix="/super-admin", tags=["Super Admin"])
+app.include_router(auth.router,              prefix="/auth",         tags=["Auth"])
+app.include_router(payment.router,           prefix="/payment",      tags=["Payment"])
+app.include_router(devices.router,           prefix="/devices",      tags=["Devices"])
+app.include_router(network.router,           prefix="/networks",     tags=["Network"])
+app.include_router(dashboard.router,         prefix="/dashboard",    tags=["Dashboard"])
+app.include_router(alert.router,             prefix="/alerts",       tags=["Alerts"])
+app.include_router(predict.router,           prefix="/ml",           tags=["ML"])
+app.include_router(super_admin_route.router, prefix="/super-admin",  tags=["Super Admin"])
+app.include_router(feedback_route.router,    prefix="/feedback",     tags=["Feedback"])
 app.include_router(ws_monitor.router)
 app.include_router(ws_dashboard.router)
 
