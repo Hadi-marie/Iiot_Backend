@@ -47,6 +47,25 @@ def send_email_change_request(to_email: str, code: str, name: str):
     })
 
 
+def send_notification_email(to_email: str, name: str, subject: str, message: str):
+    """إرسال إشعار من Super Admin لشركة"""
+    resend.Emails.send({
+        "from":    FROM_EMAIL,
+        "to":      [to_email],
+        "subject": f"{subject} — IIoT Security Platform",
+        "html":    f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #1a1a2e;">IIoT Security Platform</h2>
+            <p>Hello <strong>{name}</strong>,</p>
+            <div style="background: #f4f4f4; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p>{message}</p>
+            </div>
+            <p style="color: #666; font-size: 12px;">This is an automated message from IIoT Security Platform.</p>
+        </div>
+        """
+    })
+
+
 def send_email_change_notification(to_email: str, new_email: str, name: str, accept_token: str, reject_token: str, base_url: str):
     """إشعار للإيميل القديم مع خيار قبول أو رفض"""
     resend.Emails.send({
