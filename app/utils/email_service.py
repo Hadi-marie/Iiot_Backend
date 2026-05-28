@@ -3,7 +3,7 @@ import resend
 
 resend.api_key = os.getenv("RESEND_API_KEY")
 
-FROM_EMAIL = "IIoT Security <noreply@yourdomain.com>"
+FROM_EMAIL = "IIoT Security <onboarding@resend.dev>"
 
 
 def send_verification_email(to_email: str, code: str, name: str):
@@ -62,11 +62,11 @@ def send_email_change_notification(to_email: str, new_email: str, name: str, acc
             <div style="margin: 30px 0; text-align: center;">
                 <a href="{base_url}/auth/email-change/accept?token={accept_token}"
                    style="background: #22c55e; color: white; padding: 12px 30px; border-radius: 6px; text-decoration: none; margin-right: 10px;">
-                   ✅ Accept
+                   Accept
                 </a>
                 <a href="{base_url}/auth/email-change/reject?token={reject_token}"
                    style="background: #ef4444; color: white; padding: 12px 30px; border-radius: 6px; text-decoration: none;">
-                   ❌ Reject
+                   Reject
                 </a>
             </div>
             <p style="color: #666; font-size: 12px;">This link expires in 24 hours.</p>
