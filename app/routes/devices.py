@@ -21,8 +21,6 @@ SEVERITY_MAP = {
 }
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
-
 class DeviceCreate(BaseModel):
     device_name: str
     device_type: str
@@ -33,7 +31,6 @@ class DeviceStatusUpdate(BaseModel):
     status: str
 
 
-# ── إضافة جهاز ────────────────────────────────────────────────────────────────
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_device(
     data: DeviceCreate,
@@ -52,6 +49,18 @@ def create_device(
             detail="Please create a network first"
         )
 
+    # ✅ تحقق من IP مكرر في نفس الشبكة
+    existing_ip = db.query(Device).filter(
+        Device.network_id == network.network_id,
+        Device.ip_address == data.ip_address
+    ).first()
+
+    if existing_ip:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"IP address {data.ip_address} already exists in this network"
+        )
+
     new_device = Device(
         network_id=network.network_id,
         ip_address=data.ip_address,
@@ -63,7 +72,6 @@ def create_device(
     db.commit()
     db.refresh(new_device)
 
-    # ✅ نرجع device_token و secret_key مرة واحدة فقط عند الإنشاء
     return {
         "message": "Device created successfully",
         "device": {
@@ -72,13 +80,12 @@ def create_device(
             "device_type":  new_device.device_type,
             "ip_address":   new_device.ip_address,
             "status":       new_device.status,
-            "device_token": new_device.device_token,   # للجهاز الفعلي فقط
-            "secret_key":   new_device.secret_key       # للجهاز الفعلي فقط
+            "device_token": new_device.device_token,
+            "secret_key":   new_device.secret_key
         }
     }
 
 
-# ── جلب أجهزة الشركة ──────────────────────────────────────────────────────────
 @router.get("/")
 def get_devices(
     current_admin=Depends(get_current_admin),
@@ -113,7 +120,6 @@ def get_devices(
     ]
 
 
-# ── تفاصيل جهاز واحد ──────────────────────────────────────────────────────────
 @router.get("/{public_id}")
 def get_device(
     public_id: str,
@@ -147,7 +153,6 @@ def get_device(
     }
 
 
-# ── تغيير حالة جهاز ───────────────────────────────────────────────────────────
 @router.patch("/{public_id}/status")
 def update_device_status(
     public_id: str,
@@ -181,7 +186,6 @@ def update_device_status(
     device.status = data.status
     db.commit()
 
-    # إنشاء alert عند الحالات الخطيرة
     if data.status in SEVERITY_MAP:
         db.add(SecurityAlert(
             company_id = current_admin.company_id,
@@ -195,13 +199,12 @@ def update_device_status(
         db.commit()
 
     return {
-        "message":    "Device status updated",
+        "message":     "Device status updated",
         "device_name": device.device_name,
         "new_status":  device.status
     }
 
 
-# ── حذف جهاز ──────────────────────────────────────────────────────────────────
 @router.delete("/{public_id}")
 def delete_device(
     public_id: str,
