@@ -45,7 +45,6 @@ def request_unblock(
     if device.status != "blocked":
         raise HTTPException(status_code=400, detail="Device is not blocked")
 
-    # تحقق ما في طلب معلق مسبقاً
     existing = db.query(UnblockRequest).filter(
         UnblockRequest.device_id == device.device_id,
         UnblockRequest.status    == "pending"
@@ -143,13 +142,14 @@ def resolve_unblock_request(
     request.status      = "approved" if action == "approve" else "rejected"
     request.resolved_at = datetime.utcnow()
 
-    # إذا تمت الموافقة → رفع الحظر عن الجهاز
     if action == "approve":
         device = db.query(Device).filter(
             Device.device_id == request.device_id
         ).first()
         if device:
-            device.status = "active"
+            # ✅ يرجع active ويحدّث last_seen عشان الـ heartbeat ما يحوله offline فوراً
+            device.status    = "active"
+            device.last_seen = datetime.utcnow()
 
     db.commit()
 

@@ -6,16 +6,11 @@ from app.db import SessionLocal
 from app.models.device import Device
 from app.models.security_alert import SecurityAlert
 
-HEARTBEAT_TIMEOUT = 30   # ثانية — جهاز لم يرسل heartbeat منذ 30 ثانية → offline
-CHECK_INTERVAL    = 10   # ثانية — فترة الفحص
+HEARTBEAT_TIMEOUT = 30   # ثانية
+CHECK_INTERVAL    = 10   # ثانية
 
 
 def start_heartbeat_checker():
-    """
-    يعمل في background thread.
-    يفحص كل جهاز — إذا last_seen قديم أكثر من HEARTBEAT_TIMEOUT يحوّله offline
-    وينشئ SecurityAlert.
-    """
 
     while True:
 
@@ -25,21 +20,20 @@ def start_heartbeat_checker():
 
             cutoff = datetime.utcnow() - timedelta(seconds=HEARTBEAT_TIMEOUT)
 
-            # ✅ نضيف شرط last_seen != None لتجنب كسر الـ filter
+            # ✅ لا نحول الأجهزة المحظورة أو المحجوبة يدوياً إلى offline
+            # فقط الأجهزة active أو warning أو maintenance
             timeout_devices = db.query(Device).filter(
                 Device.last_seen != None,
                 Device.last_seen  < cutoff,
-                Device.status    != "offline"
+                Device.status.in_(["active", "warning", "maintenance"])
             ).all()
 
             for device in timeout_devices:
 
                 print(f"🚨 Heartbeat timeout: {device.device_name}")
 
-                # تحويل الجهاز offline
                 device.status = "offline"
 
-                # ✅ company_id من الـ relationship وليس network_id مباشرة
                 try:
                     company_id = device.network.company_id
                 except Exception:
