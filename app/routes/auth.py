@@ -1,11 +1,7 @@
-import random
-import string
-import json
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -22,14 +18,9 @@ from app.coree.security import (
     get_current_user,
     get_current_admin,
 )
-from app.utils.email_service import send_verification_email
 
 router  = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
-
-
-def _generate_code(length=6) -> str:
-    return ''.join(random.choices(string.digits, k=length))
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -41,15 +32,10 @@ class CompanyAdminRegister(BaseModel):
     password:     str
 
 
-class VerifyAndRegisterRequest(BaseModel):
-    email: EmailStr
-    code:  str
-
-
-# ── تسجيل شركة جديدة — الخطوة 1: إرسال كود التحقق ───────────────────────────
-@router.post("/register-company/send-code", status_code=200)
+# ── تسجيل شركة جديدة — خطوة واحدة ───────────────────────────────────────────
+@router.post("/register-company", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
-def send_registration_code(request: Request, data: CompanyAdminRegister, db: Session = Depends(get_db)):
+def register_company(request: Request, data: CompanyAdminRegister, db: Session = Depends(get_db)):
 
     existing = db.query(CompanyAdmin).filter(
         CompanyAdmin.email == data.email
@@ -57,67 +43,18 @@ def send_registration_code(request: Request, data: CompanyAdminRegister, db: Ses
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    db.query(VerificationCode).filter(
-        VerificationCode.email   == data.email,
-        VerificationCode.purpose == "register",
-        VerificationCode.is_used == False
-    ).delete()
-    db.commit()
-
-    code    = _generate_code()
-    expires = datetime.utcnow() + timedelta(minutes=10)
-
-    extra = json.dumps({
-        "company_name": data.company_name,
-        "name":         data.name,
-        "password":     hash_password(data.password)
-    })
-
-    db.add(VerificationCode(
-        email      = data.email,
-        code       = code,
-        purpose    = "register",
-        extra_data = extra,
-        expires_at = expires
-    ))
-    db.commit()
-
-    send_verification_email(data.email, code, data.name)
-
-    return {"message": "Verification code sent to your email"}
-
-
-# ── تسجيل شركة جديدة — الخطوة 2: تأكيد الكود وإنشاء الحساب ─────────────────
-@router.post("/register-company", status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
-def register_company(request: Request, data: VerifyAndRegisterRequest, db: Session = Depends(get_db)):
-
-    record = db.query(VerificationCode).filter(
-        VerificationCode.email      == data.email,
-        VerificationCode.code       == data.code,
-        VerificationCode.purpose    == "register",
-        VerificationCode.is_used    == False,
-        VerificationCode.expires_at > datetime.utcnow()
-    ).first()
-
-    if not record:
-        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
-
-    extra = json.loads(record.extra_data)
-
-    new_company = Company(name=extra["company_name"], email=data.email)
+    new_company = Company(name=data.company_name, email=data.email)
     db.add(new_company)
     db.commit()
     db.refresh(new_company)
 
     new_admin = CompanyAdmin(
-        name          = extra["name"],
+        name          = data.name,
         email         = data.email,
-        password_hash = extra["password"],
+        password_hash = hash_password(data.password),
         company_id    = new_company.company_id
     )
     db.add(new_admin)
-    record.is_used = True
     db.commit()
     db.refresh(new_admin)
 
