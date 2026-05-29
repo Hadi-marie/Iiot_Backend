@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -48,12 +50,12 @@ def unblock_device(
     device.status    = "active"
     device.last_seen = datetime.utcnow()
 
-    # تسجيل في audit_log
+    # تسجيل في audit_log — نحفظ البيانات بشكل منظم
     db.add(AuditLog(
         company_id  = current_admin.company_id,
         event_type  = "DEVICE_UNBLOCKED",
         severity    = "low",
-        description = f"{device.device_name} ({device.ip_address}) unblocked by admin {current_admin.name}"
+        description = f"device:{device.device_name}|ip:{device.ip_address}|admin:{current_admin.name}|admin_id:{current_admin.admin_id}"
     ))
 
     db.commit()
@@ -78,11 +80,27 @@ def get_unblock_history(
         AuditLog.event_type == "DEVICE_UNBLOCKED"
     ).order_by(AuditLog.created_at.desc()).all()
 
-    return [
-        {
-            "log_id":      l.log_id,
-            "description": l.description,
-            "created_at":  l.created_at.isoformat()
-        }
-        for l in logs
-    ]
+    result = []
+    for l in logs:
+        # استخرج البيانات من الـ description
+        try:
+            parts = dict(item.split(":") for item in l.description.split("|"))
+            result.append({
+                "log_id":      l.log_id,
+                "device_name": parts.get("device", "—"),
+                "ip_address":  parts.get("ip", "—"),
+                "admin_name":  parts.get("admin", "—"),
+                "unblocked_at": l.created_at.isoformat()
+            })
+        except Exception:
+            # fallback للسجلات القديمة
+            result.append({
+                "log_id":      l.log_id,
+                "device_name": "—",
+                "ip_address":  "—",
+                "admin_name":  "—",
+                "description": l.description,
+                "unblocked_at": l.created_at.isoformat()
+            })
+
+    return result
