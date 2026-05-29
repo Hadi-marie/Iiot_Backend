@@ -1,3 +1,5 @@
+import ipaddress
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -6,6 +8,10 @@ from app.db import get_db
 from app.models.device import Device
 from app.models.network import Network
 from app.models.security_alert import SecurityAlert
+from app.models.detection_result import DetectionResult
+from app.models.network_flow import NetworkFlow
+from app.models.action import Action
+from app.models.unblock_request import UnblockRequest
 from app.coree.security import get_current_admin
 from app.utils.subscription import check_subscription
 
@@ -31,6 +37,17 @@ class DeviceStatusUpdate(BaseModel):
     status: str
 
 
+def _validate_ip_in_range(ip_address: str, ip_range: str) -> bool:
+    """تحقق إن IP الجهاز ينتمي لـ range الشبكة"""
+    try:
+        network = ipaddress.ip_network(ip_range, strict=False)
+        ip      = ipaddress.ip_address(ip_address)
+        return ip in network
+    except ValueError:
+        return False
+
+
+# ── إضافة جهاز ────────────────────────────────────────────────────────────────
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_device(
     data: DeviceCreate,
@@ -49,7 +66,14 @@ def create_device(
             detail="Please create a network first"
         )
 
-    # ✅ تحقق من IP مكرر في نفس الشبكة
+    # ✅ تحقق إن IP الجهاز ينتمي لـ range الشبكة
+    if network.ip_range and not _validate_ip_in_range(data.ip_address, network.ip_range):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"IP address {data.ip_address} is not within the network range {network.ip_range}"
+        )
+
+    # ✅ تحقق من IP مكرر
     existing_ip = db.query(Device).filter(
         Device.network_id == network.network_id,
         Device.ip_address == data.ip_address
@@ -62,11 +86,11 @@ def create_device(
         )
 
     new_device = Device(
-        network_id=network.network_id,
-        ip_address=data.ip_address,
-        device_name=data.device_name,
-        device_type=data.device_type,
-        status="active"
+        network_id  = network.network_id,
+        ip_address  = data.ip_address,
+        device_name = data.device_name,
+        device_type = data.device_type,
+        status      = "active"
     )
     db.add(new_device)
     db.commit()
@@ -86,6 +110,7 @@ def create_device(
     }
 
 
+# ── جلب أجهزة الشركة ──────────────────────────────────────────────────────────
 @router.get("/")
 def get_devices(
     current_admin=Depends(get_current_admin),
@@ -120,6 +145,7 @@ def get_devices(
     ]
 
 
+# ── تفاصيل جهاز ───────────────────────────────────────────────────────────────
 @router.get("/{public_id}")
 def get_device(
     public_id: str,
@@ -136,8 +162,8 @@ def get_device(
         raise HTTPException(status_code=404, detail="Network not found")
 
     device = db.query(Device).filter(
-        Device.public_id   == public_id,
-        Device.network_id  == network.network_id
+        Device.public_id  == public_id,
+        Device.network_id == network.network_id
     ).first()
 
     if not device:
@@ -153,6 +179,7 @@ def get_device(
     }
 
 
+# ── تغيير حالة جهاز ───────────────────────────────────────────────────────────
 @router.patch("/{public_id}/status")
 def update_device_status(
     public_id: str,
@@ -205,6 +232,7 @@ def update_device_status(
     }
 
 
+# ── حذف جهاز (مع حذف كل البيانات المرتبطة) ───────────────────────────────────
 @router.delete("/{public_id}")
 def delete_device(
     public_id: str,
@@ -228,6 +256,27 @@ def delete_device(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    device_id = device.device_id
+
+    # ✅ حذف كل البيانات المرتبطة أولاً (لتجنب foreign key errors)
+    db.query(SecurityAlert).filter(SecurityAlert.device_id == device_id).delete()
+    db.query(UnblockRequest).filter(UnblockRequest.device_id == device_id).delete()
+
+    # حذف detection_results وما يرتبط بها من actions
+    detections = db.query(DetectionResult).filter(
+        DetectionResult.device_id == device_id
+    ).all()
+    for det in detections:
+        db.query(Action).filter(Action.detection_id == det.detection_id).delete()
+    db.query(DetectionResult).filter(DetectionResult.device_id == device_id).delete()
+
+    # حذف network_flows
+    db.query(NetworkFlow).filter(NetworkFlow.device_id == device_id).delete()
+
+    # حذف actions المرتبطة مباشرة بالجهاز
+    db.query(Action).filter(Action.device_id == device_id).delete()
+
+    # حذف الجهاز
     db.delete(device)
     db.commit()
 
