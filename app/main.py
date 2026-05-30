@@ -26,6 +26,7 @@ from app.routes import auth, payment, devices, network, dashboard
 from app.routes import ws_monitor, ws_dashboard, alert, predict
 from app.routes import super_admin_route, feedback_route, unblock_route
 from app.routes import report_route, api_key_route, settings_route
+from app.routes import chatbot_route
 from app.utils.heartbeat_checker import start_heartbeat_checker
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ app.include_router(unblock_route.router,     prefix="/unblock",      tags=["Unbl
 app.include_router(report_route.router,      prefix="/reports",      tags=["Reports"])
 app.include_router(api_key_route.router,     prefix="/api-keys",     tags=["API Keys"])
 app.include_router(settings_route.router,    prefix="/settings",     tags=["Settings"])
+app.include_router(chatbot_route.router,     prefix="/chatbot",      tags=["Chatbot"])
 app.include_router(ws_monitor.router)
 app.include_router(ws_dashboard.router)
 

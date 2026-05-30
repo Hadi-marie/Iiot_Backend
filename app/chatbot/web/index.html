@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IDS AI · RAG Chatbot</title>
+    <style>
+      :root {
+        --bg-1: #0b1220;
+        --bg-2: #111c33;
+        --accent: #22d3ee;
+        --accent-2: #6366f1;
+        --user: #2563eb;
+        --bot: #0f1b30;
+        --line: rgba(148, 163, 184, 0.18);
+        --text: #e6edf6;
+        --muted: #93a4bd;
+        font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(1100px 600px at 85% -10%, rgba(34, 211, 238, 0.16), transparent 60%),
+          radial-gradient(900px 500px at 0% 0%, rgba(99, 102, 241, 0.18), transparent 55%),
+          linear-gradient(160deg, var(--bg-1), var(--bg-2));
+        display: flex;
+        justify-content: center;
+        padding: 22px 14px;
+      }
+      .app { width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 16px; }
+
+      .hero { text-align: center; }
+      .hero h1 {
+        margin: 4px 0;
+        font-size: clamp(24px, 4vw, 38px);
+        letter-spacing: 0.2px;
+        background: linear-gradient(90deg, #fff, var(--accent));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .hero p { margin: 0; color: var(--muted); font-size: 15px; }
+
+      .panel {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        overflow: hidden;
+        box-shadow: 0 30px 80px rgba(2, 6, 23, 0.55);
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        height: min(72vh, 720px);
+        backdrop-filter: blur(8px);
+      }
+      .bar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 18px; border-bottom: 1px solid var(--line);
+        background: rgba(2, 6, 23, 0.35);
+      }
+      .bar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+      .dot.ok { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+      .bar .meta { color: var(--muted); font-size: 12px; }
+
+      .messages { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+      .row { display: flex; }
+      .row.user { justify-content: flex-start; }
+      .row.bot { justify-content: flex-end; }
+      .bubble {
+        max-width: 86%;
+        padding: 13px 16px; border-radius: 16px; line-height: 1.7; white-space: pre-wrap;
+        font-size: 15px; position: relative; word-wrap: break-word;
+      }
+      .row.user .bubble { background: var(--user); color: #fff; border-bottom-right-radius: 4px; }
+      .row.bot .bubble { background: var(--bot); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+      .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .tag {
+        font-size: 11px; padding: 3px 9px; border-radius: 999px;
+        border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.03);
+      }
+      .tag.mode { color: #06121f; background: var(--accent); border-color: transparent; font-weight: 700; }
+      .typing { color: var(--muted); font-style: italic; }
+
+      .composer { border-top: 1px solid var(--line); padding: 14px; background: rgba(2, 6, 23, 0.35); }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+      .chip {
+        cursor: pointer; font: inherit; font-size: 12.5px; color: var(--text);
+        background: rgba(99, 102, 241, 0.16); border: 1px solid rgba(99,102,241,0.4);
+        padding: 7px 12px; border-radius: 999px;
+      }
+      .chip:hover { background: rgba(99, 102, 241, 0.3); }
+      form { display: flex; gap: 10px; }
+      input {
+        flex: 1; font: inherit; font-size: 15px; color: var(--text);
+        background: rgba(2, 6, 23, 0.6); border: 1px solid var(--line);
+        border-radius: 14px; padding: 14px 16px;
+      }
+      input:focus { outline: 2px solid rgba(34, 211, 238, 0.4); border-color: var(--accent); }
+      button.send {
+        border: 0; border-radius: 14px; padding: 0 22px; cursor: pointer; font: inherit; font-weight: 800;
+        color: #06121f; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      }
+      button.send:disabled { opacity: 0.55; cursor: wait; }
+      .sources { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+      .sources details summary { cursor: pointer; }
+      /* Hide developer meta (mode/confidence/sources) from end users by default. */
+      .app.clean .answer-meta { display: none; }
+      .toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; cursor: pointer; user-select: none; }
+      .toggle input { accent-color: var(--accent); }
+      @media (max-width: 620px) { .bubble { max-width: 92%; } form { flex-direction: column; } button.send { padding: 13px; } }
+    </style>
+  </head>
+  <body>
+    <div class="app clean" id="app">
+      <div class="hero">
+        <h1>IDS AI · RAG Chatbot</h1>
+        <p>مساعد ذكي لنظام كشف التسلل في الشبكات الصناعية · Smart assistant for the AI IDS / IIoT project</p>
+      </div>
+
+      <div class="panel">
+        <div class="bar">
+          <div class="brand"><span class="dot" id="status-dot"></span><span>IDS Assistant</span></div>
+          <label class="toggle"><input type="checkbox" id="details-toggle" /> تفاصيل المطوّر / details</label>
+        </div>
+
+        <div class="messages" id="messages">
+          <div class="row bot">
+            <div class="bubble">
+              مرحبًا 👋 أنا مساعد مشروع نظام كشف التسلل (IDS) الذكي لحماية أجهزة IIoT.
+              اسألني عن الخدمة، الهجمات، التثبيت، الأسعار، الدعم، التقارير أو أي تفاصيل في المشروع.
+              <div class="tags"><span class="tag">عربي</span><span class="tag">English</span><span class="tag">RAG + Vector DB</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="chips" id="chips"></div>
+          <form id="form">
+            <input id="input" autocomplete="off" placeholder="اكتب سؤالك… / Type your question…" />
+            <button class="send" id="send" type="submit">إرسال</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API = (location.origin && location.origin.startsWith("http"))
+        ? location.origin
+        : "http://localhost:8000";
+      const messages = document.getElementById("messages");
+      const form = document.getElementById("form");
+      const input = document.getElementById("input");
+      const sendBtn = document.getElementById("send");
+      const statusDot = document.getElementById("status-dot");
+      const chipsWrap = document.getElementById("chips");
+      const appEl = document.getElementById("app");
+      document.getElementById("details-toggle").addEventListener("change", (e) => {
+        appEl.classList.toggle("clean", !e.target.checked);
+      });
+
+      const SESSION_ID =
+        (window.crypto && crypto.randomUUID && crypto.randomUUID()) ||
+        "sess-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+
+      const EXAMPLES = [
+        "شو هي خدمتكم بالضبط؟",
+        "كم مدة الاشتراك بالخدمة؟",
+        "شو الفرق بين DoS و DDoS؟",
+        "كيف أحمي أجهزة IIoT؟",
+        "What is the difference between a firewall and an IDS?",
+      ];
+      EXAMPLES.forEach((q) => {
+        const b = document.createElement("button");
+        b.className = "chip"; b.type = "button"; b.textContent = q;
+        b.onclick = () => ask(q);
+        chipsWrap.appendChild(b);
+      });
+
+      function bubble(role, text) {
+        const row = document.createElement("div");
+        row.className = `row ${role}`;
+        const b = document.createElement("div");
+        b.className = "bubble"; b.dir = "auto"; b.textContent = text;
+        row.appendChild(b);
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+        return b;
+      }
+
+      function metaTags(data) {
+        const wrap = document.createElement("div");
+        wrap.className = "tags answer-meta";
+        const modeLabel = { curated: "إجابة معتمدة", "llm:openai": "LLM", "llm:ollama": "LLM",
+          retrieval: "بحث دلالي", no_match: "بدون نتيجة" }[data.mode] || data.mode;
+        const add = (t, cls) => { const s = document.createElement("span"); s.className = "tag " + (cls||""); s.textContent = t; wrap.appendChild(s); };
+        add(modeLabel, "mode");
+        if (data.category) add(data.category);
+        if (typeof data.confidence === "number") add("ثقة " + Math.round(data.confidence * 100) + "%");
+        return wrap;
+      }
+
+      function sourcesBlock(sources) {
+        if (!sources || !sources.length) return null;
+        const d = document.createElement("div");
+        d.className = "sources answer-meta";
+        const det = document.createElement("details");
+        const sum = document.createElement("summary");
+        sum.textContent = `المصادر المسترجعة (${sources.length})`;
+        det.appendChild(sum);
+        sources.forEach((s, i) => {
+          const p = document.createElement("div");
+          p.textContent = `${i + 1}. [${s.type}] ${s.question || s.source || ""} · ${Math.round((s.score||0)*100)}%`;
+          det.appendChild(p);
+        });
+        d.appendChild(det);
+        return d;
+      }
+
+      async function ask(question) {
+        bubble("user", question);
+        input.value = "";
+        sendBtn.disabled = true;
+        const thinking = bubble("bot", "يفكر…");
+        thinking.classList.add("typing");
+        try {
+          const res = await fetch(API + "/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: question, session_id: SESSION_ID }),
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const data = await res.json();
+          thinking.classList.remove("typing");
+          thinking.textContent = data.answer;
+          thinking.appendChild(metaTags(data));
+          const sb = sourcesBlock(data.sources);
+          if (sb) thinking.appendChild(sb);
+          messages.scrollTop = messages.scrollHeight;
+        } catch (e) {
+          thinking.classList.remove("typing");
+          thinking.textContent =
+            "تعذّر الاتصال بالخادم. تأكد أن الـ API يعمل (uvicorn app.main:app --port 8000) وأن Qdrant يعمل.\n\nCould not reach the API.";
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const q = input.value.trim();
+        if (q) ask(q);
+      });
+
+      async function checkHealth() {
+        try {
+          const r = await fetch(API + "/health");
+          const h = await r.json();
+          statusDot.classList.toggle("ok", !!(h.vector_db && h.vector_db.ready));
+        } catch {
+          statusDot.classList.remove("ok");
+        }
+      }
+      checkHealth();
+      setInterval(checkHealth, 15000);
+    </script>
+  </body>
+</html>
