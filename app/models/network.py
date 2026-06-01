@@ -9,20 +9,14 @@ class Network(Base):
 
     network_id = Column(Integer, primary_key=True, index=True)
 
-    # 🔥 UUID خارجي
     public_id = Column(
         String(100),
         unique=True,
         default=lambda: str(uuid.uuid4())
     )
 
-    company_id = Column(
-        Integer,
-        ForeignKey("company.company_id")
-    )
-
+    company_id = Column(Integer, ForeignKey("company.company_id"))
+    network_name = Column(String(255), nullable=True)
     ip_range = Column(String(100))
-    devices = relationship(
-    "Device",
-    back_populates="network"
-     )
+
+    devices = relationship("Device", back_populates="network")
