@@ -7,18 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from dotenv import load_dotenv
-
 from app.db import get_db
 from app.models.subscription import Subscription
 from app.models.plan import Plan
 from app.coree.security import get_current_admin
 
-load_dotenv()
-
-stripe.api_key  = os.getenv("STRIPE_SECRET_KEY")
-WEBHOOK_SECRET  = os.getenv("STRIPE_WEBHOOK_SECRET")
-FRONTEND_URL    = os.getenv("FRONTEND_URL", "http://localhost:3000")
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+FRONTEND_URL   = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 router = APIRouter()
 
@@ -102,11 +98,12 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
         session = event["data"]["object"]
 
-        if session.get("payment_status") != "paid":
+        # ✅ الطريقة الصحيحة مع Stripe API الجديد
+        if session.payment_status != "paid":
             return {"status": "ignored"}
 
-        company_id = session.get("metadata", {}).get("company_id")
-        plan_id    = session.get("metadata", {}).get("plan_id")
+        company_id = session.metadata.company_id if session.metadata else None
+        plan_id    = session.metadata.plan_id    if session.metadata else None
 
         if not company_id or not plan_id:
             raise HTTPException(status_code=400, detail="Missing metadata")
@@ -132,7 +129,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             status     = "active",
             start_date = datetime.utcnow(),
             end_date   = datetime.utcnow() + timedelta(days=plan.duration_days),
-            price      = session.get("amount_total", 0) / 100
+            price      = session.amount_total / 100 if session.amount_total else 0
         ))
         db.commit()
 
