@@ -1,7 +1,4 @@
-"""
-شغّل هذا السكريبت مرة واحدة فقط لإضافة الخطط للداتابيز:
-    python seed_plans.py
-"""
+
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
