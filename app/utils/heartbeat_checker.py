@@ -6,7 +6,7 @@ from app.db import SessionLocal
 from app.models.device import Device
 from app.models.security_alert import SecurityAlert
 
-HEARTBEAT_TIMEOUT = 60   # ثانية — رُفع من 30 إلى 60
+HEARTBEAT_TIMEOUT = 120  # ثانية — رُفع من 30 إلى 60
 CHECK_INTERVAL    = 20   # ثانية — فحص كل 20 ثانية
 
 
