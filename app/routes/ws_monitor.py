@@ -12,7 +12,6 @@ from app.models.device import Device
 from app.models.security_alert import SecurityAlert
 from app.models.audit_log import AuditLog
 
-# ✅ من broadcaster بدل circular import
 from app.utils.broadcaster import broadcast_alert_to_company
 
 router = APIRouter()
@@ -121,6 +120,15 @@ async def websocket_monitor(websocket: WebSocket):
                 })
                 continue
 
+            # ✅ رفض الجهاز المحظور فوراً
+            if device.status == "blocked":
+                await websocket.send_json({
+                    "type":    "auth_error",
+                    "message": "Device is blocked — connection refused"
+                })
+                await websocket.close()
+                return
+
             _cleanup_nonces(device_id, current_time)
 
             if device_id not in used_nonces:
@@ -194,6 +202,14 @@ async def websocket_monitor(websocket: WebSocket):
                 })
                 continue
 
+            # ✅ منع الجهاز من تغيير حالته لـ active بنفسه
+            # الجهاز يقدر فقط يرسل: active (heartbeat طبيعي)
+            # لكن لا يقدر يغير حالته من warning/offline لـ active
+            if new_status == "active":
+                # فقط نحدث last_seen، ما نغير الحالة لو كانت warning أو offline
+                if device.status in ("warning", "offline", "maintenance"):
+                    new_status = device.status  # يبقى على حالته
+            
             device.status    = new_status
             device.last_seen = datetime.utcnow()
             db.commit()
@@ -250,10 +266,7 @@ async def websocket_monitor(websocket: WebSocket):
                 ))
                 db.commit()
 
-                # بث للأجهزة
                 await _broadcast_to_company(company_id, alert_data)
-
-                # 🔥 بث للفرونت لحظياً
                 await broadcast_alert_to_company(company_id, alert_data)
 
     except WebSocketDisconnect:
