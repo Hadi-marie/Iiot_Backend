@@ -120,7 +120,7 @@ async def websocket_monitor(websocket: WebSocket):
                 })
                 continue
 
-            # ✅ رفض الجهاز المحظور فوراً
+            # ✅ رفض الجهاز المحظور فوراً — لا يقدر يتصل أبداً
             if device.status == "blocked":
                 await websocket.send_json({
                     "type":    "auth_error",
@@ -202,14 +202,15 @@ async def websocket_monitor(websocket: WebSocket):
                 })
                 continue
 
-            # ✅ منع الجهاز من تغيير حالته لـ active بنفسه
-            # الجهاز يقدر فقط يرسل: active (heartbeat طبيعي)
-            # لكن لا يقدر يغير حالته من warning/offline لـ active
-            if new_status == "active":
-                # فقط نحدث last_seen، ما نغير الحالة لو كانت warning أو offline
-                if device.status in ("warning", "offline", "maintenance"):
-                    new_status = device.status  # يبقى على حالته
-            
+            # ✅ الجهاز blocked لا يتغير إلا عبر /unblock/
+            # بقية الحالات تتغير بحرية
+            if new_status == "active" and device.status == "blocked":
+                await websocket.send_json({
+                    "type":    "auth_error",
+                    "message": "Device is blocked — cannot change status"
+                })
+                continue
+
             device.status    = new_status
             device.last_seen = datetime.utcnow()
             db.commit()
